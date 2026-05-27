@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { load } from '@2gis/mapgl';
 import  mapgl from '@2gis/mapgl/types';
 import { FeatureCollection, Geometry, GeoJsonProperties } from 'geojson'; 
-import geoData from "./data/respublika-tatarstan-tatarstan.json";
 import { useMapglContext } from './MapglContext.tsx';
 import { useControlRotateClockwise } from './hooks/useControlRotateClockwise.tsx';
 import { MapWrapper } from './MapWrapper.tsx';
@@ -10,9 +9,20 @@ import { ControlRotateCounterclockwise } from './ControlRotateCounterclockwise.t
 
 
 export default function Mapgl() {
+    const [geoData, setGeoData] = useState<FeatureCollection<Geometry, GeoJsonProperties> | null>(null);
     const map_center = [49.112374, 55.801715];
-
     const { setMapglContext } = useMapglContext();
+
+    useEffect(() => {
+        async function loadData() {
+            const response = await fetch('./leo-lab-7/data/respublika-tatarstan-tatarstan.json');
+            const data = await response.json();
+
+            setGeoData(data);
+        }
+
+        loadData();
+    }, []);
 
     useEffect(() => {
         let map: mapgl.Map | undefined = undefined;

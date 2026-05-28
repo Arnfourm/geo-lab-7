@@ -8,7 +8,15 @@ import { MapWrapper } from './MapWrapper.tsx';
 import { ControlRotateCounterclockwise } from './ControlRotateCounterclockwise.tsx';
 import { pointLayer,heatmapLayer } from './layers.tsx';
 
-export default function Mapgl() {
+type MapglProps = {
+    showAccidents: boolean;
+    showHeatLayer: boolean;
+};
+
+export default function Mapgl({
+    showAccidents,
+    showHeatLayer
+} : MapglProps) {
     const [geoData, setGeoData] = useState<FeatureCollection<Geometry, GeoJsonProperties> | null>(null);
     const map_center = [49.112374, 55.801715];
     const { setMapglContext } = useMapglContext();
@@ -19,19 +27,23 @@ export default function Mapgl() {
         async function loadData() {
             try {
                 const response = await fetch('/geo-lab-7/respublika-tatarstan-tatarstan.json');
-                const data = await response.json();
+                const data: FeatureCollection<Geometry, GeoJsonProperties> = await response.json();
                 setGeoData(data);
             } catch (e) {
-                console.error("Ошибка загрузки GeoJSON:", e);
+                console.error("Ошибка загрузки:", e);
             }
         }
+
         loadData();
     }, []);
 
     useEffect(() => {
-        let map: mapgl.Map | undefined = undefined;
+        let map: mapgl.Map;
+        let cancelled = false;
 
         load().then((mapglAPI) => {
+            if (cancelled) return
+
             map = new mapglAPI.Map('map-container', {
                 center: map_center,
                 zoom: 12,
@@ -40,44 +52,67 @@ export default function Mapgl() {
             });
             
             mapRef.current = map;
-
-            map.on('styleload', () => {
-                setStyleLoaded(true);
-            });
             
+            map.on('styleload', () => {
+                if (!cancelled) setStyleLoaded(true);
+            });
+
             setMapglContext({
                 mapglInstance: map,
                 mapgl: mapglAPI
             });
+        })
+        .catch((e) => {
+            console.error('Ошибка инициализации', e);
         });
 
         return () => {
+            cancelled = true;
             map?.destroy();
             mapRef.current = null;
+            setStyleLoaded(false);
             setMapglContext({ mapglInstance: undefined, mapgl: undefined});
         };
-    }, []);
+    }, [setMapglContext]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map || !styleLoaded || !geoData) return;
+
+        const source = new (window as any).mapgl.GeoJsonSource(map, {
+        data: geoData,
+        attributes: { visible: true },
+        });
+
+        return () => {
+            source?.destroy();
+        };
+    }, [styleLoaded, geoData]);
 
     useEffect(() => {
         const map = mapRef.current;
 
-        if (!map || !styleLoaded || !geoData) return;
+        if (!map || !styleLoaded) return;
 
-        const source = new (window as any).mapgl.GeoJsonSource(map, {
-            data: geoData,
-            attributes: {
-                visible: true,
-            },
-        });
+        if (showAccidents) {
+            map.addLayer(pointLayer);
+        } else {
+            map.removeLayer('dtp-data-layer');
+        }
+        
+    }, [showAccidents, styleLoaded]);
 
-        map.addLayer(heatmapLayer as any);
-        map.addLayer(pointLayer as any);
+    useEffect(() => {
+        const map = mapRef.current;
 
-        return () => {
-            map && map.destroy();
-            setMapglContext({ mapglInstance: undefined, mapgl: undefined });
-        };
-    }, [styleLoaded, geoData]);
+        if (!map || !styleLoaded) return;
+
+        if (showHeatLayer) {
+            map.addLayer(heatmapLayer);
+        } else {
+            map.removeLayer('dtp-heatmap-layer');
+        }
+    }, [showHeatLayer, styleLoaded]);
 
     useControlRotateClockwise();
 
